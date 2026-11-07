@@ -497,7 +497,7 @@ export class LspClientManager {
 				);
 				if (server.id === "rust-analyzer") {
 					const probeClient = clientState.client as ExtendedLSPClient;
-					installRustCompletionProbe(probeClient);
+					if (false) installRustCompletionProbe(probeClient);
 					const completionProvider =
 						probeClient.serverCapabilities?.completionProvider;
 					logRustCompletionProbe("Rust client ready", {
