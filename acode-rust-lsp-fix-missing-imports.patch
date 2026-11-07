@@ -1,0 +1,26 @@
+diff --git a/src/cm/lsp/clientManager.ts b/src/cm/lsp/clientManager.ts
+--- a/src/cm/lsp/clientManager.ts
++++ b/src/cm/lsp/clientManager.ts
+@@ -23,6 +23,7 @@
+ import { documentColorsExtension } from "./documentColors";
+ import { supportsBuiltinFormatting } from "./formattingSupport";
+ import { inlayHintsExtension } from "./inlayHints";
+ import { addLspLog } from "./logs";
++import { logRustCompletionProbe } from "./probeFile";
+ import { safeLspPositionToOffset } from "./positionUtils";
+ import { selectRuntimeProvider } from "./runtimeProviders";
+ import serverRegistry from "./serverRegistry";
+diff --git a/src/lib/editorManager.js b/src/lib/editorManager.js
+--- a/src/lib/editorManager.js
++++ b/src/lib/editorManager.js
+@@ -83,6 +83,7 @@
+ import "cm/supportedModes";
+ import { onProviderRegistered } from "fileSystem";
+ import { autocompletion } from "@codemirror/autocomplete";
+ import { LSPPlugin, serverCompletionSource } from "@codemirror/lsp-client";
++import { logRustCompletionProbe } from "cm/lsp/probeFile";
+ import colorView from "cm/colorView";
+ import {
+ 	getAllFolds,
+*** End Patch
+
