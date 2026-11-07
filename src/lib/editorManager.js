@@ -85,6 +85,7 @@ import "cm/supportedModes";
 import { onProviderRegistered } from "fileSystem";
 import { autocompletion } from "@codemirror/autocomplete";
 import { LSPPlugin, serverCompletionSource } from "@codemirror/lsp-client";
+import { logRustCompletionProbe } from "cm/lsp/probeFile";
 import colorView from "cm/colorView";
 import {
 	getAllFolds,
@@ -1001,7 +1002,7 @@ async function EditorManager($header, $body) {
 		const completionPlugins = allPlugins.filter((plugin) =>
 			plugin.featureEnabled("completion"),
 		);
-		console.info("[RUST-LSP-PROBE] completion source invoked", {
+		logRustCompletionProbe("completion source invoked", {
 			facetEnabled,
 			explicit: context.explicit,
 			hasView: !!context.view,
@@ -1018,9 +1019,7 @@ async function EditorManager($header, $body) {
 			})),
 		});
 		if (!facetEnabled) {
-			console.warn(
-				"[RUST-LSP-PROBE] source blocked: lspCompletionEnabled facet is false",
-			);
+			logRustCompletionProbe("source blocked: lspCompletionEnabled facet is false");
 			return null;
 		}
 
@@ -1028,7 +1027,7 @@ async function EditorManager($header, $body) {
 		if (result && typeof result.then === "function") {
 			return result.then(
 				(value) => {
-					console.info("[RUST-LSP-PROBE] CodeMirror source result", {
+					logRustCompletionProbe("CodeMirror source result", {
 						returned: value ? "completion-result" : "null",
 						optionCount: Array.isArray(value?.options)
 							? value.options.length
@@ -1037,15 +1036,12 @@ async function EditorManager($header, $body) {
 					return value;
 				},
 				(error) => {
-					console.error(
-						"[RUST-LSP-PROBE] CodeMirror source rejected",
-						error,
-					);
+					logRustCompletionProbe("CodeMirror source rejected", error);
 					throw error;
 				},
 			);
 		}
-		console.info("[RUST-LSP-PROBE] CodeMirror source result", {
+		logRustCompletionProbe("CodeMirror source result", {
 			returned: result ? "completion-result" : "null",
 			optionCount: Array.isArray(result?.options) ? result.options.length : 0,
 		});

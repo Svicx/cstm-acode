@@ -24,6 +24,7 @@ import { documentColorsExtension } from "./documentColors";
 import { supportsBuiltinFormatting } from "./formattingSupport";
 import { inlayHintsExtension } from "./inlayHints";
 import { addLspLog } from "./logs";
+import { logRustCompletionProbe } from "./probeFile";
 import { safeLspPositionToOffset } from "./positionUtils";
 import { selectRuntimeProvider } from "./runtimeProviders";
 import serverRegistry from "./serverRegistry";
@@ -336,7 +337,7 @@ function installRustCompletionProbe(client: ExtendedLSPClient): void {
 		if (method !== "textDocument/completion") {
 			return originalRequest(method, params);
 		}
-		console.info("[RUST-LSP-PROBE] completion request sent", params);
+		logRustCompletionProbe("completion request sent", params);
 		return originalRequest(method, params).then(
 			(result) => {
 				let itemCount: number | null = null;
@@ -345,14 +346,14 @@ function installRustCompletionProbe(client: ExtendedLSPClient): void {
 				} else if (isPlainObject(result) && Array.isArray(result.items)) {
 					itemCount = result.items.length;
 				}
-				console.info(
-					"[RUST-LSP-PROBE] completion response received",
-					{ itemCount, result },
-				);
+				logRustCompletionProbe("completion response received", {
+					itemCount,
+					result,
+				});
 				return result;
 			},
 			(error) => {
-				console.error("[RUST-LSP-PROBE] completion request failed", error);
+				logRustCompletionProbe("completion request failed", error);
 				throw error;
 			},
 		);
@@ -499,7 +500,7 @@ export class LspClientManager {
 					installRustCompletionProbe(probeClient);
 					const completionProvider =
 						probeClient.serverCapabilities?.completionProvider;
-					console.info("[RUST-LSP-PROBE] Rust client ready", {
+					logRustCompletionProbe("Rust client ready", {
 						uri: normalizedUri,
 						languageId: targetLanguageId,
 						rootUri: target.normalizedRootUri,

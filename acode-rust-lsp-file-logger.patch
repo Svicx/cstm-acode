@@ -1,0 +1,184 @@
+diff --git a/src/cm/lsp/probeFile.ts b/src/cm/lsp/probeFile.ts
+new file mode 100644
+--- /dev/null
++++ b/src/cm/lsp/probeFile.ts
+@@ -0,0 +1,102 @@
++type NativeSystemApi = {
++	getFilesDir: (
++		success: (path: string) => void,
++		error: (reason: unknown) => void,
++	) => void;
++	mkdirs?: (
++		path: string,
++		success: () => void,
++		error: (reason: unknown) => void,
++	) => void;
++	writeText: (
++		path: string,
++		content: string,
++		success: () => void,
++		error: (reason: unknown) => void,
++	) => void;
++};
++
++const MAX_ENTRIES = 300;
++const MAX_RECORD_CHARS = 8000;
++const entries: string[] = [];
++let pathPromise: Promise<string> | null = null;
++let writeQueue: Promise<void> = Promise.resolve();
++
++function getSystemApi(): NativeSystemApi {
++	const root = globalThis as typeof globalThis & {
++		system?: NativeSystemApi;
++		window?: { system?: NativeSystemApi };
++	};
++	const api = root.system ?? root.window?.system;
++	if (!api?.getFilesDir || !api.writeText) {
++		throw new Error("Acode native system file API is not available");
++	}
++	return api;
++}
++
++function getLogPath(): Promise<string> {
++	if (!pathPromise) {
++		pathPromise = (async () => {
++			const system = getSystemApi();
++			const filesDir = await new Promise<string>((resolve, reject) => {
++				system.getFilesDir(resolve, reject);
++			});
++			const publicDir = `${String(filesDir).replace(/\/+$/, "")}/public`;
++			if (system.mkdirs) {
++				await new Promise<void>((resolve, reject) => {
++					system.mkdirs?.(publicDir, resolve, reject);
++				});
++			}
++			return `${publicDir}/rust-lsp-probe.log`;
++		})();
++	}
++	return pathPromise.catch((error) => {
++		pathPromise = null;
++		throw error;
++	});
++}
++
++function serializeDetails(details: unknown): string {
++	try {
++		const serialized = JSON.stringify(details, (_key, value) => {
++			if (value instanceof Error) {
++				return {
++					name: value.name,
++					message: value.message,
++					stack: value.stack,
++				};
++			}
++			return value;
++		});
++		return String(serialized ?? details).slice(0, MAX_RECORD_CHARS);
++	} catch {
++		return String(details).slice(0, MAX_RECORD_CHARS);
++	}
++}
++
++/** Writes diagnostic events to the directory exposed as /public in Acode Terminal. */
++export function logRustCompletionProbe(
++	event: string,
++	details?: unknown,
++): void {
++	const suffix = details === undefined ? "" : ` ${serializeDetails(details)}`;
++	const line = `${new Date().toISOString()} [RUST-LSP-PROBE] ${event}${suffix}`;
++	entries.push(line);
++	if (entries.length > MAX_ENTRIES) {
++		entries.splice(0, entries.length - MAX_ENTRIES);
++	}
++	console.info(line);
++
++	const snapshot = `${entries.join("\n")}\n`;
++	writeQueue = writeQueue
++		.then(async () => {
++			const path = await getLogPath();
++			const system = getSystemApi();
++			await new Promise<void>((resolve, reject) => {
++				system.writeText(path, snapshot, resolve, reject);
++			});
++		})
++		.catch((error) => {
++			console.error("[RUST-LSP-PROBE] unable to write diagnostic file", error);
++		});
++}
+diff --git a/src/cm/lsp/clientManager.ts b/src/cm/lsp/clientManager.ts
+--- a/src/cm/lsp/clientManager.ts
++++ b/src/cm/lsp/clientManager.ts
+@@ -25,4 +25,5 @@
+ import { inlayHintsExtension } from "./inlayHints";
+ import { addLspLog } from "./logs";
++import { logRustCompletionProbe } from "./probeFile";
+ import { safeLspPositionToOffset } from "./positionUtils";
+ import { selectRuntimeProvider } from "./runtimeProviders";
+@@ -315,3 +316,3 @@
+ 		}
+-		console.info("[RUST-LSP-PROBE] completion request sent", params);
++		logRustCompletionProbe("completion request sent", params);
+ 		return originalRequest(method, params).then(
+@@ -324,6 +325,6 @@
+ 				}
+-				console.info(
+-					"[RUST-LSP-PROBE] completion response received",
+-					{ itemCount, result },
+-				);
++				logRustCompletionProbe("completion response received", {
++					itemCount,
++					result,
++				});
+ 				return result;
+@@ -331,3 +332,3 @@
+ 			(error) => {
+-				console.error("[RUST-LSP-PROBE] completion request failed", error);
++				logRustCompletionProbe("completion request failed", error);
+ 				throw error;
+@@ -470,4 +471,4 @@
+ 					const completionProvider =
+ 						probeClient.serverCapabilities?.completionProvider;
+-					console.info("[RUST-LSP-PROBE] Rust client ready", {
++					logRustCompletionProbe("Rust client ready", {
+ 						uri: normalizedUri,
+diff --git a/src/lib/editorManager.js b/src/lib/editorManager.js
+--- a/src/lib/editorManager.js
++++ b/src/lib/editorManager.js
+@@ -85,4 +85,5 @@
+ import { onProviderRegistered } from "fileSystem";
+ import { autocompletion } from "@codemirror/autocomplete";
+ import { LSPPlugin, serverCompletionSource } from "@codemirror/lsp-client";
++import { logRustCompletionProbe } from "cm/lsp/probeFile";
+ import colorView from "cm/colorView";
+@@ -956,4 +957,4 @@
+ 			plugin.featureEnabled("completion"),
+ 		);
+-		console.info("[RUST-LSP-PROBE] completion source invoked", {
++		logRustCompletionProbe("completion source invoked", {
+ 			facetEnabled,
+@@ -973,5 +974,3 @@
+ 		if (!facetEnabled) {
+-			console.warn(
+-				"[RUST-LSP-PROBE] source blocked: lspCompletionEnabled facet is false",
+-			);
++			logRustCompletionProbe("source blocked: lspCompletionEnabled facet is false");
+ 			return null;
+@@ -981,4 +980,4 @@
+ 			return result.then(
+ 				(value) => {
+-					console.info("[RUST-LSP-PROBE] CodeMirror source result", {
++					logRustCompletionProbe("CodeMirror source result", {
+ 						returned: value ? "completion-result" : "null",
+@@ -991,6 +990,3 @@
+ 				(error) => {
+-					console.error(
+-						"[RUST-LSP-PROBE] CodeMirror source rejected",
+-						error,
+-					);
++					logRustCompletionProbe("CodeMirror source rejected", error);
+ 					throw error;
+@@ -998,3 +994,3 @@
+ 		}
+-		console.info("[RUST-LSP-PROBE] CodeMirror source result", {
++		logRustCompletionProbe("CodeMirror source result", {
+ 			returned: result ? "completion-result" : "null",
