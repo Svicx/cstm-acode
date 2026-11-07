@@ -319,6 +319,45 @@ interface ResolvedRuntimeTarget {
 interface ExtendedLSPClient extends LSPClient {
 	__acodeServerId?: string;
 	__acodeLoggedInfo?: boolean;
+	__acodeCompletionProbeInstalled?: boolean;
+}
+
+function installRustCompletionProbe(client: ExtendedLSPClient): void {
+	if (client.__acodeCompletionProbeInstalled) return;
+	const originalRequest = client.request.bind(client) as (
+		method: string,
+		params: unknown,
+	) => Promise<unknown>;
+
+	(client as any).request = (
+		method: string,
+		params: unknown,
+	): Promise<unknown> => {
+		if (method !== "textDocument/completion") {
+			return originalRequest(method, params);
+		}
+		console.info("[RUST-LSP-PROBE] completion request sent", params);
+		return originalRequest(method, params).then(
+			(result) => {
+				let itemCount: number | null = null;
+				if (Array.isArray(result)) {
+					itemCount = result.length;
+				} else if (isPlainObject(result) && Array.isArray(result.items)) {
+					itemCount = result.items.length;
+				}
+				console.info(
+					"[RUST-LSP-PROBE] completion response received",
+					{ itemCount, result },
+				);
+				return result;
+			},
+			(error) => {
+				console.error("[RUST-LSP-PROBE] completion request failed", error);
+				throw error;
+			},
+		);
+	};
+	client.__acodeCompletionProbeInstalled = true;
 }
 
 interface PendingClientInitialization {
@@ -455,6 +494,24 @@ export class LspClientManager {
 					},
 					target,
 				);
+				if (server.id === "rust-analyzer") {
+					const probeClient = clientState.client as ExtendedLSPClient;
+					installRustCompletionProbe(probeClient);
+					const completionProvider =
+						probeClient.serverCapabilities?.completionProvider;
+					console.info("[RUST-LSP-PROBE] Rust client ready", {
+						uri: normalizedUri,
+						languageId: targetLanguageId,
+						rootUri: target.normalizedRootUri,
+						completionCapability: probeClient.hasCapability(
+							"completionProvider",
+						),
+						triggerCharacters:
+							typeof completionProvider === "object" && completionProvider
+								? completionProvider.triggerCharacters ?? []
+								: [],
+					});
+				}
 				const plugin = clientState.client.plugin(
 					normalizedUri,
 					targetLanguageId,

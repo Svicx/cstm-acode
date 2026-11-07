@@ -1,4 +1,4 @@
-{
+git apply acode-rust-completion-probe-all.patch{
   "features": {
     "ghcr.io/devcontainers/features/node:2.1": {
       "version": "2.1.1",

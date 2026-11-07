@@ -84,7 +84,7 @@ import createTouchSelectionMenu, {
 import "cm/supportedModes";
 import { onProviderRegistered } from "fileSystem";
 import { autocompletion } from "@codemirror/autocomplete";
-import { serverCompletionSource } from "@codemirror/lsp-client";
+import { LSPPlugin, serverCompletionSource } from "@codemirror/lsp-client";
 import colorView from "cm/colorView";
 import {
 	getAllFolds,
@@ -996,8 +996,60 @@ async function EditorManager($header, $body) {
 	}
 
 	function getLspCompletionSource(context) {
-		if (!context.state.facet(lspCompletionEnabled)) return null;
-		return serverCompletionSource(context);
+		const facetEnabled = context.state.facet(lspCompletionEnabled);
+		const allPlugins = context.view ? LSPPlugin.getAll(context.view) : [];
+		const completionPlugins = allPlugins.filter((plugin) =>
+			plugin.featureEnabled("completion"),
+		);
+		console.info("[RUST-LSP-PROBE] completion source invoked", {
+			facetEnabled,
+			explicit: context.explicit,
+			hasView: !!context.view,
+			allPluginCount: allPlugins.length,
+			completionPluginCount: completionPlugins.length,
+			plugins: allPlugins.map((plugin) => ({
+				serverId: plugin.client.__acodeServerId || "unknown",
+				uri: plugin.uri,
+				languageId: plugin.languageID,
+				completionEnabled: plugin.featureEnabled("completion"),
+				completionCapability: plugin.client.hasCapability(
+					"completionProvider",
+				),
+			})),
+		});
+		if (!facetEnabled) {
+			console.warn(
+				"[RUST-LSP-PROBE] source blocked: lspCompletionEnabled facet is false",
+			);
+			return null;
+		}
+
+		const result = serverCompletionSource(context);
+		if (result && typeof result.then === "function") {
+			return result.then(
+				(value) => {
+					console.info("[RUST-LSP-PROBE] CodeMirror source result", {
+						returned: value ? "completion-result" : "null",
+						optionCount: Array.isArray(value?.options)
+							? value.options.length
+							: 0,
+					});
+					return value;
+				},
+				(error) => {
+					console.error(
+						"[RUST-LSP-PROBE] CodeMirror source rejected",
+						error,
+					);
+					throw error;
+				},
+			);
+		}
+		console.info("[RUST-LSP-PROBE] CodeMirror source result", {
+			returned: result ? "completion-result" : "null",
+			optionCount: Array.isArray(result?.options) ? result.options.length : 0,
+		});
+		return result;
 	}
 
 	function getEmmetCompletionSource(context) {
